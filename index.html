@@ -1,0 +1,205 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>頻譜 PWL 計算器（含 dBA 加權）</title>
+  <!-- Chart.js -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <style>
+    * { box-sizing: border-box; }
+    body {
+      margin: 0; padding: 0;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+      display: flex; height: 100vh;
+    }
+    #inputArea {
+      width: 280px; padding: 20px;
+      background: #f7f9fc; border-right: 1px solid #ddd;
+      overflow-y: auto;
+    }
+    #inputArea h2 {
+      margin-top: 0; font-size: 1.2rem;
+    }
+    #inputArea label {
+      display: block; margin-top: 15px; font-weight: bold;
+    }
+    #inputArea input {
+      width: 100%; padding: 6px; margin-top: 4px;
+      border: 1px solid #ccc; border-radius: 4px;
+    }
+    #outputArea {
+      flex: 1; display: flex; flex-direction: column;
+    }
+    #chartContainer {
+      flex: 1; padding: 20px;
+    }
+    #tableContainer {
+      max-height: 200px; overflow-y: auto;
+      padding: 0 20px 20px;
+    }
+    table {
+      width: 100%; border-collapse: collapse;
+      font-size: 0.9rem;
+    }
+    th, td {
+      border: 1px solid #ccc; padding: 6px; text-align: center;
+    }
+    th { background: #e9ecef; }
+  </style>
+</head>
+<body>
+  <!-- 輸入區 -->
+  <div id="inputArea">
+    <h2>輸入參數</h2>
+    <label for="eta">效率係數 η</label>
+    <input type="number" id="eta" value="1e-5" step="1e-6"/>
+
+    <label for="Q">流量 Q (kg/h)</label>
+    <input type="number" id="Q" value="100000" step="100"/>
+
+    <label for="v">速度 v (m/s)</label>
+    <input type="number" id="v" value="63.6" step="0.1"/>
+
+    <label for="PCI">燃料低位熱值 PCI (kcal/kg)</label>
+    <input type="number" id="PCI" value="489" step="1"/>
+  </div>
+
+  <!-- 輸出區 -->
+  <div id="outputArea">
+    <div id="chartContainer">
+      <canvas id="pwlChart"></canvas>
+    </div>
+    <div id="tableContainer">
+      <table>
+        <thead>
+          <tr>
+            <th>頻率 f (Hz)</th>
+            <th>噪聲 PWL<sub>dB</sub></th>
+            <th>燃燒 PWL<sub>dB</sub></th>
+            <th>總體 PWL<sub>dB</sub></th>
+            <th>噪聲 PWL<sub>dBA</sub></th>
+            <th>燃燒 PWL<sub>dBA</sub></th>
+            <th>總體 PWL<sub>dBA</sub></th>
+          </tr>
+        </thead>
+        <tbody id="dataBody"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <script>
+    // 標準頻段與 A 加權值 (dB)
+    const bands = [63,125,250,500,1000,2000,4000,8000];
+    const Aweights = {
+      63:  -26.2,
+      125: -16.1,
+      250:  -8.6,
+      500:  -3.2,
+      1000:  0.0,
+      2000:  1.2,
+      4000:  1.0,
+      8000: -1.1
+    };
+    const W0 = 1e-12;  // 參考功率
+
+    // DOM 元素
+    const etaInput = document.getElementById('eta');
+    const QInput   = document.getElementById('Q');
+    const vInput   = document.getElementById('v');
+    const PCIInput = document.getElementById('PCI');
+    const tbody    = document.getElementById('dataBody');
+    const ctx      = document.getElementById('pwlChart').getContext('2d');
+
+    // Chart.js 實例
+    const pwlChart = new Chart(ctx, {
+      type: 'line',
+      data: {
+        labels: bands,
+        datasets: [
+          { label: '噪聲 PWL(dBA)', data: [], fill: false, tension: 0.3, pointRadius: 4, borderWidth: 2 },
+          { label: '燃燒 PWL(dBA)', data: [], fill: false, tension: 0.3, pointRadius: 4, borderWidth: 2 },
+          { label: '總體 PWL(dBA)', data: [], fill: false, tension: 0.3, pointRadius: 4, borderWidth: 2 }
+        ]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        scales: {
+          x: { title: { display: true, text: '頻率 f (Hz)' } },
+          y: { title: { display: true, text: 'PWL(dBA)' } }
+        },
+        plugins: {
+          title: { display: true, text: '頻譜 PWL vs. 頻率 (含 dBA 加權)' }
+        }
+      }
+    });
+
+    // 計算並更新
+    function update() {
+      const η   = parseFloat(etaInput.value);
+      const Qh  = parseFloat(QInput.value);
+      const v   = parseFloat(vInput.value);
+      const PCI = parseFloat(PCIInput.value);
+
+      // 單位轉換
+      const Q = Qh / 3600;          // kg/s
+      const JperKcal = 4184;       // J/kcal
+
+      // 功率計算
+      const W_noise      = η * Q * v * v / 2;
+      const W_combustion = Q * PCI * JperKcal;
+      const W_global     = W_noise + W_combustion;
+
+      // 總 PWL(dB)
+      const PWL_noise      = 10 * Math.log10(W_noise / W0);
+      const PWL_combustion = 10 * Math.log10(W_combustion / W0);
+      const PWL_global     = 10 * Math.log10(W_global / W0);
+
+      // 準備頻帶資料
+      const noise_dBA_data      = [];
+      const combustion_dBA_data = [];
+      const global_dBA_data     = [];
+
+      // 填表格
+      tbody.innerHTML = '';
+      bands.forEach(f => {
+        const A = Aweights[f];
+        const ndBA = +(PWL_noise      + A).toFixed(1);
+        const cdBA = +(PWL_combustion + A).toFixed(1);
+        const gdBA = +(PWL_global     + A).toFixed(1);
+
+        noise_dBA_data.push(ndBA);
+        combustion_dBA_data.push(cdBA);
+        global_dBA_data.push(gdBA);
+
+        const row = document.createElement('tr');
+        row.innerHTML = `
+          <td>${f}</td>
+          <td>${PWL_noise.toFixed(1)}</td>
+          <td>${PWL_combustion.toFixed(1)}</td>
+          <td>${PWL_global.toFixed(1)}</td>
+          <td>${ndBA}</td>
+          <td>${cdBA}</td>
+          <td>${gdBA}</td>
+        `;
+        tbody.appendChild(row);
+      });
+
+      // 更新圖表
+      pwlChart.data.datasets[0].data = noise_dBA_data;
+      pwlChart.data.datasets[1].data = combustion_dBA_data;
+      pwlChart.data.datasets[2].data = global_dBA_data;
+      pwlChart.update();
+    }
+
+    // 監聽輸入改動
+    [etaInput, QInput, vInput, PCIInput].forEach(el =>
+      el.addEventListener('input', update)
+    );
+
+    // 初始渲染
+    update();
+  </script>
+</body>
+</html>
