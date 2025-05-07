@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Ground-Level Noise Map</title>
+  <!-- 引入 Chart.js -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <style>
+    * { box-sizing: border-box; }
+    body {
+      margin: 0; padding: 0;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+      display: flex; flex-direction: column; height: 100vh;
+    }
+    #chartArea {
+      flex: 1; padding: 20px;
+    }
+    #tableArea {
+      max-height: 200px;
+      overflow-y: auto;
+      padding: 0 20px 20px;
+      background: #f7f9fc;
+      border-top: 1px solid #ddd;
+    }
+    table {
+      width: 100%; border-collapse: collapse;
+      margin: 0 auto;
+    }
+    th, td {
+      border: 1px solid #ccc; padding: 6px; text-align: center;
+    }
+    th { background: #e9ecef; }
+  </style>
+</head>
+<body>
+  <!-- 圖表區 -->
+  <div id="chartArea">
+    <canvas id="noiseCurve"></canvas>
+  </div>
+  <!-- 數值表格 -->
+  <div id="tableArea">
+    <table>
+      <thead>
+        <tr>
+          <th>距離 (m)</th>
+          <th>噪音等級 (dBA)</th>
+        </tr>
+      </thead>
+      <tbody id="dataBody"></tbody>
+    </table>
+  </div>
+
+  <script>
+    // ——— 1. 把你提供的 NOISE MAP 資料放進陣列 ———
+    const distances = [0, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100, 120, 140, 160, 180, 200];
+    const noisedBA  = [73.8, 73.4, 72.5, 71.4, 70.1, 68.9, 67.8, 66.8, 65.8, 65.0, 64.2, 62.7, 61.5, 60.4, 59.4, 58.5];
+
+    // ——— 2. 繪製折線圖 ———
+    const ctx = document.getElementById('noiseCurve').getContext('2d');
+    new Chart(ctx, {
+      type: 'line',
+      data: {
+        labels: distances,
+        datasets: [{
+          label: '噪音等級 (dBA)',
+          data: noisedBA,
+          fill: false,
+          tension: 0.3,
+          pointRadius: 4,
+          borderWidth: 2
+        }]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        scales: {
+          x: {
+            title: { display: true, text: '距離 (m)' }
+          },
+          y: {
+            title: { display: true, text: '噪音等級 (dBA)' },
+            suggestedMin: 50,
+            suggestedMax: 80
+          }
+        },
+        plugins: {
+          title: {
+            display: true,
+            text: 'Ground-Level Noise Map\n噪音等級 vs. 距離'
+          },
+          legend: { display: false }
+        }
+      }
+    });
+
+    // ——— 3. 把資料填到表格 ———
+    const tbody = document.getElementById('dataBody');
+    distances.forEach((d, i) => {
+      const tr = document.createElement('tr');
+      tr.innerHTML = `<td>${d}</td><td>${noisedBA[i].toFixed(1)}</td>`;
+      tbody.appendChild(tr);
+    });
+  </script>
+</body>
+</html>
